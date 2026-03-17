@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSV Column Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+      * {
+        font-family: "IBM Plex Sans", sans-serif;
+      }
+      .mono {
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      body {
+        background: #f0f2f5;
+      }
+
+      .upload-zone {
+        border: 2px dashed #cbd5e1;
+        transition: all 0.2s;
+      }
+      .upload-zone:hover,
+      .upload-zone.dragover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+      }
+      .upload-zone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+        width: 100%;
+        height: 100%;
+      }
+
+      .pill-select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 30px;
+      }
+
+      .table-wrap {
+        overflow: auto;
+        max-height: 60vh;
+      }
+      table thead tr th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #1e293b;
+      }
+
+      .scroll-hint {
+        display: none;
+      }
+      @media (max-width: 640px) {
+        .scroll-hint {
+          display: flex;
+        }
+      }
+
+      tr:nth-child(even) td {
+        background: #f8fafc;
+      }
+      tr:hover td {
+        background: #eff6ff !important;
+      }
+
+      .result-col {
+        background: #fef9c3 !important;
+        font-weight: 600;
+      }
+      tr:hover .result-col {
+        background: #fef08a !important;
+      }
+
+      .calc-col {
+        background: #dcfce7 !important;
+        font-weight: 700;
+        color: #15803d;
+      }
+      tr:hover .calc-col {
+        background: #bbf7d0 !important;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+
+      th.sortable {
+        cursor: pointer;
+        user-select: none;
+      }
+      th.sortable:hover {
+        background: #2d3f55 !important;
+      }
+      th.sort-asc .sort-icon::after {
+        content: " ▲";
+      }
+      th.sort-desc .sort-icon::after {
+        content: " ▼";
+      }
+      th:not(.sort-asc):not(.sort-desc) .sort-icon::after {
+        content: " ⇅";
+        opacity: 0.4;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen p-3 sm:p-6 lg:p-10">
+    <div class="max-w-7xl mx-auto">
+      <div class="mb-4 sm:mb-6">
+        <h1
+          class="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-800 mono"
+        >
+          CSV Column Calculator
+        </h1>
+        <p class="text-slate-500 text-sm mt-1">
+          Upload a CSV, pick two columns, apply an operation.
+        </p>
+      </div>
+
+      <div
+        class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
+      >
+        <!-- Upload -->
+        <div class="p-4 sm:p-6 border-b border-slate-100">
+          <label
+            class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2"
+            >Upload File</label
+          >
+          <div
+            class="upload-zone relative rounded-xl p-4 sm:p-6 text-center cursor-pointer"
+            id="uploadZone"
+          >
+            <input type="file" id="csvFile" accept=".csv" />
+            <div id="uploadContent">
+              <div class="text-3xl sm:text-4xl mb-2">📂</div>
+              <p class="text-slate-600 font-medium text-sm sm:text-base">
+                Tap to upload CSV
+              </p>
+              <p class="text-slate-400 text-xs mt-1">or drag & drop here</p>
+            </div>
+            <div id="fileStatus" class="hidden">
+              <div class="status-badge bg-green-100 text-green-700">
+                <span class="status-dot bg-green-500"></span>
+                <span id="fileLabel">File loaded</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-2">Tap to change file</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="p-4 sm:p-6 border-b border-slate-100 bg-slate-50">
+          <label
+            class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3"
+            >Configure Operation</label
+          >
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex-1">
+              <label class="block text-xs text-slate-500 mb-1 font-medium"
+                >Column A</label
+              >
+              <input
+                id="colA"
+                value="Total Traded Quantity"
+                placeholder="Column A name"
+                class="w-full border border-slate-200 bg-white p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mono"
+              />
+            </div>
+            <div class="sm:w-28">
+              <label class="block text-xs text-slate-500 mb-1 font-medium"
+                >Operation</label
+              >
+              <select
+                id="operation"
+                class="pill-select w-full border border-slate-200 bg-white p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mono font-semibold"
+              >
+                <option value="+">+ Add</option>
+                <option value="-">- Sub</option>
+                <option value="*">* Mul</option>
+                <option value="/" selected>/ Div</option>
+                <option value="%">% Pct</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs text-slate-500 mb-1 font-medium"
+                >Column B</label
+              >
+              <input
+                id="colB"
+                value="No. of Trades"
+                placeholder="Column B name"
+                class="w-full border border-slate-200 bg-white p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mono"
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-3 mt-4">
+            <button
+              onclick="generate()"
+              class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm"
+            >
+              ⚡ Generate
+            </button>
+            <button
+              onclick="downloadCSV()"
+              class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm"
+            >
+              ⬇ Download CSV (All Columns)
+            </button>
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div
+          id="legendBar"
+          class="hidden px-4 sm:px-6 pt-4 flex flex-wrap gap-3 text-xs"
+        >
+          <span class="flex items-center gap-1.5"
+            ><span
+              class="inline-block w-3 h-3 rounded"
+              style="background: #fef9c3; border: 1px solid #ca8a04"
+            ></span
+            ><span class="text-slate-500">TQ/NT — calculated ratio</span></span
+          >
+          <span class="flex items-center gap-1.5"
+            ><span
+              class="inline-block w-3 h-3 rounded"
+              style="background: #dcfce7; border: 1px solid #16a34a"
+            ></span
+            ><span class="text-slate-500"
+              >Calc Result — both TQ/NT &amp; % Dly Qt rose vs prev day</span
+            ></span
+          >
+        </div>
+
+        <!-- Results -->
+        <div class="p-4 sm:p-6">
+          <div id="statsBar" class="hidden mb-3 flex flex-wrap gap-2">
+            <span
+              class="status-badge bg-blue-100 text-blue-700 mono"
+              id="rowCount"
+              >0 rows</span
+            >
+            <span
+              class="status-badge bg-yellow-100 text-yellow-700 mono"
+              id="opLabel"
+              >—</span
+            >
+          </div>
+
+          <div
+            class="scroll-hint items-center gap-1 text-xs text-slate-400 mb-2"
+          >
+            <span>←</span><span>Scroll horizontally to see all columns</span
+            ><span>→</span>
+          </div>
+
+          <div
+            id="emptyState"
+            class="flex flex-col items-center justify-center py-16 text-center"
+          >
+            <div class="text-5xl mb-3 opacity-30">📊</div>
+            <p class="text-slate-400 text-sm">
+              Upload a CSV and hit Generate to see results
+            </p>
+          </div>
+
+          <div
+            class="table-wrap rounded-xl border border-slate-200 hidden"
+            id="tableWrap"
+          >
+            <table
+              id="table"
+              class="min-w-full border-collapse text-sm"
+            ></table>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-center text-xs text-slate-400 mt-4 pb-4">
+        All processing happens locally in your browser — no data is uploaded.
+      </p>
+    </div>
+
+    <script>
+      let jsonData = [];
+      let headers = [];
+      let resultData = []; // full enriched rows (all cols + TQ/NT + Calc Result)
+      let currentSort = { col: null, dir: "desc" };
+      let displayHeaders = []; // the subset of cols shown in table
+
+      // ─── RFC-4180 CSV parser ──────────────────────────────────────────────────────
+      function parseCSVLine(line) {
+        const fields = [];
+        let i = 0;
+        while (i < line.length) {
+          if (line[i] === '"') {
+            i++;
+            let field = "";
+            while (i < line.length) {
+              if (line[i] === '"' && line[i + 1] === '"') {
+                field += '"';
+                i += 2;
+              } else if (line[i] === '"') {
+                i++;
+                break;
+              } else {
+                field += line[i++];
+              }
+            }
+            fields.push(field);
+            if (line[i] === ",") i++;
+          } else {
+            let start = i;
+            while (i < line.length && line[i] !== ",") i++;
+            fields.push(line.slice(start, i));
+            if (line[i] === ",") i++;
+          }
+        }
+        return fields;
+      }
+
+      function csvToJson(csv) {
+        if (csv.charCodeAt(0) === 0xfeff) csv = csv.slice(1);
+        const lines = csv.trim().split(/\r?\n/);
+        headers = parseCSVLine(lines[0]).map((h) => h.trim());
+        jsonData = lines
+          .slice(1)
+          .filter((l) => l.trim() !== "")
+          .map((line) => {
+            const values = parseCSVLine(line);
+            const obj = {};
+            headers.forEach((h, i) => {
+              obj[h] = (values[i] ?? "").trim();
+            });
+            return obj;
+          });
+      }
+      // ─────────────────────────────────────────────────────────────────────────────
+
+      function normalize(str) {
+        return str
+          .toLowerCase()
+          .replace(/qty/g, "quantity")
+          .replace(/no\./g, "no")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+      }
+
+      function parseNumber(val) {
+        if (!val) return 0;
+        return Number(String(val).replace(/,/g, "").trim()) || 0;
+      }
+
+      function findColumn(userInput) {
+        const n = normalize(userInput);
+        return headers.find((h) => normalize(h) === n);
+      }
+
+      // Parse DD-Mon-YYYY date strings for sorting
+      function parseDate(str) {
+        if (!str) return 0;
+        const months = {
+          jan: 0,
+          feb: 1,
+          mar: 2,
+          apr: 3,
+          may: 4,
+          jun: 5,
+          jul: 6,
+          aug: 7,
+          sep: 8,
+          oct: 9,
+          nov: 10,
+          dec: 11,
+        };
+        const m = str.match(/(\d{2})-([A-Za-z]{3})-(\d{4})/);
+        if (!m) return 0;
+        return new Date(+m[3], months[m[2].toLowerCase()], +m[1]).getTime();
+      }
+
+      // Returns subset of headers to show in the table
+      function getDisplayHeaders() {
+        const DISPLAY_COLS_NORMALIZED = [
+          "date",
+          "totaltradedquantity",
+          "nooftrades",
+          "deliverablequantity",
+          "dlyqttotradedquantity",
+        ];
+        return headers.filter((h) => {
+          const n = normalize(h);
+          return DISPLAY_COLS_NORMALIZED.some(
+            (dc) => n === dc || n.includes(dc) || dc.includes(n),
+          );
+        });
+      }
+
+      function calc(a, b, op) {
+        switch (op) {
+          case "+":
+            return a + b;
+          case "-":
+            return a - b;
+          case "*":
+            return a * b;
+          case "/":
+            return b ? a / b : 0;
+          case "%":
+            return b ? (a / b) * 100 : 0;
+        }
+      }
+
+      // ─── File loading ─────────────────────────────────────────────────────────────
+      const zone = document.getElementById("uploadZone");
+      zone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        zone.classList.add("dragover");
+      });
+      zone.addEventListener("dragleave", () =>
+        zone.classList.remove("dragover"),
+      );
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        zone.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.endsWith(".csv")) loadFile(file);
+        else alert("Please drop a .csv file");
+      });
+      document
+        .getElementById("csvFile")
+        .addEventListener("change", function (e) {
+          if (e.target.files[0]) loadFile(e.target.files[0]);
+        });
+
+      function loadFile(file) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          csvToJson(event.target.result);
+          document.getElementById("uploadContent").classList.add("hidden");
+          document.getElementById("fileStatus").classList.remove("hidden");
+          document.getElementById("fileLabel").textContent =
+            `${file.name} — ${jsonData.length} rows`;
+        };
+        reader.readAsText(file);
+      }
+
+      // ─── Generate ─────────────────────────────────────────────────────────────────
+      function generate() {
+        if (jsonData.length === 0) {
+          alert("Please upload a CSV first");
+          return;
+        }
+
+        const colAInput = document.getElementById("colA").value;
+        const colBInput = document.getElementById("colB").value;
+        const op = document.getElementById("operation").value;
+
+        const colA = findColumn(colAInput);
+        const colB = findColumn(colBInput);
+
+        if (!colA || !colB) {
+          alert(
+            `Column not found.\n\nAvailable columns:\n${headers.join("\n")}`,
+          );
+          return;
+        }
+
+        // Find % Dly Qt column
+        const dlyCol = headers.find(
+          (h) =>
+            normalize(h).includes("dlyqt") ||
+            normalize(h).includes("dlyquantity") ||
+            normalize(h).includes("%dly"),
+        );
+
+        // Step 1: compute TQ/NT for each row
+        const enriched = jsonData.map((row, idx) => {
+          const a = parseNumber(row[colA]);
+          const b = parseNumber(row[colB]);
+          const tqnt = Number(calc(a, b, op).toFixed(2));
+          return {
+            ...row,
+            _idx: idx,
+            _tqnt: tqnt,
+            _dly: parseNumber(dlyCol ? row[dlyCol] : 0),
+            _dateTs: parseDate(row["Date"] || row["date"] || ""),
+          };
+        });
+
+        // Step 2: default sort by Date descending (latest first)
+        enriched.sort((a, b) => b._dateTs - a._dateTs);
+
+        // Step 3: compute Calc Result
+        // "previous day" = next element in the sorted array (since sorted latest-first, prev day is index+1)
+        enriched.forEach((row, i) => {
+          const prev = enriched[i + 1];
+          if (prev && row._tqnt > prev._tqnt && row._dly > prev._dly) {
+            row._calcResult = row["Date"] || row["date"] || "✓";
+          } else {
+            row._calcResult = "";
+          }
+        });
+
+        resultData = enriched.map((row) => {
+          const out = { ...row };
+          delete out._idx;
+          delete out._dateTs;
+          out["TQ/NT"] = row._tqnt;
+          out["Calc Result"] = row._calcResult;
+          delete out._tqnt;
+          delete out._dly;
+          delete out._calcResult;
+          return out;
+        });
+
+        displayHeaders = getDisplayHeaders();
+        currentSort = { col: "Date", dir: "desc" };
+        renderTable(enriched, displayHeaders, colA, colB, op, dlyCol);
+
+        document.getElementById("statsBar").classList.remove("hidden");
+        document.getElementById("legendBar").classList.remove("hidden");
+        document.getElementById("rowCount").textContent =
+          `${jsonData.length} rows`;
+        document.getElementById("opLabel").textContent =
+          `${colA} ${op} ${colB}`;
+        document.getElementById("emptyState").classList.add("hidden");
+        document.getElementById("tableWrap").classList.remove("hidden");
+
+        // Store for re-render on sort
+        window._lastEnriched = enriched;
+        window._lastDisplayHeaders = displayHeaders;
+        window._lastColA = colA;
+        window._lastColB = colB;
+        window._lastOp = op;
+        window._lastDlyCol = dlyCol;
+      }
+
+      // ─── Render Table ─────────────────────────────────────────────────────────────
+      function renderTable(enriched, dispHeaders, colA, colB, op, dlyCol) {
+        const table = document.getElementById("table");
+        table.innerHTML = "";
+
+        // Column defs: S.No | dispHeaders | TQ/NT | Calc Result
+        const colDefs = [
+          { key: "S.No", label: "S.No", sortable: false },
+          ...dispHeaders.map((h) => ({ key: h, label: h, sortable: true })),
+          {
+            key: "TQ/NT",
+            label: `TQ/NT (${colA} ${op} ${colB})`,
+            sortable: true,
+            cls: "result-col",
+          },
+          {
+            key: "Calc Result",
+            label: "Calc Result",
+            sortable: false,
+            cls: "calc-col",
+          },
+        ];
+
+        // THEAD
+        let thead = "<thead><tr>";
+        colDefs.forEach((c) => {
+          const sortClass = c.sortable ? "sortable" : "";
+          let dirClass = "";
+          if (c.sortable && currentSort.col === c.key)
+            dirClass = `sort-${currentSort.dir}`;
+          const colorClass =
+            c.key === "TQ/NT"
+              ? "text-yellow-300"
+              : c.key === "Calc Result"
+                ? "text-green-300"
+                : "text-slate-300";
+          const click = c.sortable ? `onclick="sortBy('${c.key}')"` : "";
+          thead += `<th class="${sortClass} ${dirClass} border-b border-slate-600 p-2 sm:p-3 text-left ${colorClass} font-semibold text-xs mono whitespace-nowrap" ${click}><span class="sort-icon">${c.label}</span></th>`;
+        });
+        thead += "</tr></thead>";
+
+        // TBODY
+        let tbody = "<tbody>";
+        enriched.forEach((row, index) => {
+          tbody += "<tr>";
+          colDefs.forEach((c) => {
+            if (c.key === "S.No") {
+              tbody += `<td class="border-b border-slate-100 p-2 sm:p-3 text-slate-400 mono text-xs">${index + 1}</td>`;
+            } else if (c.key === "TQ/NT") {
+              tbody += `<td class="border-b border-slate-100 p-2 sm:p-3 result-col mono text-xs whitespace-nowrap">${row._tqnt}</td>`;
+            } else if (c.key === "Calc Result") {
+              const val = row._calcResult;
+              const highlight = val ? "calc-col" : "";
+              tbody += `<td class="border-b border-slate-100 p-2 sm:p-3 mono text-xs whitespace-nowrap ${highlight}">${val}</td>`;
+            } else {
+              tbody += `<td class="border-b border-slate-100 p-2 sm:p-3 text-slate-700 text-xs whitespace-nowrap">${row[c.key] ?? ""}</td>`;
+            }
+          });
+          tbody += "</tr>";
+        });
+        tbody += "</tbody>";
+
+        table.innerHTML = thead + tbody;
+      }
+
+      // ─── Sort ─────────────────────────────────────────────────────────────────────
+      function sortBy(col) {
+        if (!window._lastEnriched) return;
+
+        if (currentSort.col === col) {
+          currentSort.dir = currentSort.dir === "asc" ? "desc" : "asc";
+        } else {
+          currentSort.col = col;
+          currentSort.dir = "desc";
+        }
+
+        const data = window._lastEnriched;
+        const dir = currentSort.dir === "asc" ? 1 : -1;
+
+        data.sort((a, b) => {
+          if (col === "Date") {
+            return dir * (a._dateTs - b._dateTs);
+          } else if (col === "TQ/NT") {
+            return dir * (a._tqnt - b._tqnt);
+          } else {
+            // Try numeric first
+            const na = parseNumber(a[col]);
+            const nb = parseNumber(b[col]);
+            if (!isNaN(na) && !isNaN(nb) && a[col] !== "" && b[col] !== "") {
+              return dir * (na - nb);
+            }
+            return (
+              dir * String(a[col] ?? "").localeCompare(String(b[col] ?? ""))
+            );
+          }
+        });
+
+        // Recompute Calc Result after sort (always relative to new order, prev = next in array)
+        data.forEach((row, i) => {
+          const prev = data[i + 1];
+          if (prev && row._tqnt > prev._tqnt && row._dly > prev._dly) {
+            row._calcResult = row["Date"] || row["date"] || "✓";
+          } else {
+            row._calcResult = "";
+          }
+        });
+
+        // Update resultData too (for download)
+        resultData = data.map((row) => {
+          const out = { ...row };
+          delete out._idx;
+          delete out._dateTs;
+          out["TQ/NT"] = row._tqnt;
+          out["Calc Result"] = row._calcResult;
+          delete out._tqnt;
+          delete out._dly;
+          delete out._calcResult;
+          return out;
+        });
+
+        renderTable(
+          data,
+          window._lastDisplayHeaders,
+          window._lastColA,
+          window._lastColB,
+          window._lastOp,
+          window._lastDlyCol,
+        );
+      }
+
+      // ─── Download — ALL columns ───────────────────────────────────────────────────
+      function escapeField(val) {
+        let s = String(val ?? "");
+        if (
+          s.includes(",") ||
+          s.includes('"') ||
+          s.includes("\n") ||
+          s.includes("\r")
+        ) {
+          s = '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      }
+
+      function downloadCSV() {
+        if (resultData.length === 0) {
+          alert("Generate results first");
+          return;
+        }
+
+        const cols = [...headers, "TQ/NT", "Calc Result"];
+        let csv = "\uFEFF";
+        csv += cols.map(escapeField).join(",") + "\r\n";
+        resultData.forEach((row) => {
+          csv += cols.map((c) => escapeField(row[c])).join(",") + "\r\n";
+        });
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "calculated_results.csv";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    </script>
+  </body>
+</html>
